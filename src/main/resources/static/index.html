@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f4f7fb">
+    <title>Employee Management</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="script.js" defer></script>
+</head>
+<body>
+    <main class="page-shell">
+        <header class="page-header">
+            <p class="eyebrow">PEOPLE OPERATIONS</p>
+            <h1>Employee management</h1>
+            <p class="intro">Keep employee details up to date in one place.</p>
+        </header>
+
+        <section class="panel" aria-labelledby="formHeading">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">EMPLOYEE DETAILS</p>
+                    <h2 id="formHeading">Add an employee</h2>
+                </div>
+            </div>
+
+            <form id="employeeForm">
+                <div class="form-grid">
+                    <label for="firstName">First name
+                        <input type="text" id="firstName" name="firstName"
+                               autocomplete="given-name" maxlength="255" required>
+                    </label>
+                    <label for="lastName">Last name
+                        <input type="text" id="lastName" name="lastName"
+                               autocomplete="family-name" maxlength="255" required>
+                    </label>
+                    <label for="email">Email address
+                        <input type="email" id="email" name="email"
+                               autocomplete="email" maxlength="255" required>
+                    </label>
+                    <label for="department">Department
+                        <input type="text" id="department" name="department"
+                               maxlength="255" required>
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button id="submitEmployee" type="submit">Save employee</button>
+                    <button id="cancelEdit" class="button-secondary" type="button" hidden>
+                        Cancel edit
+                    </button>
+                    <p id="message" class="status" role="status" aria-live="polite"></p>
+                </div>
+            </form>
+        </section>
+
+        <section class="panel" aria-labelledby="listHeading">
+            <div class="section-heading list-heading">
+                <div>
+                    <p class="eyebrow">DIRECTORY</p>
+                    <h2 id="listHeading">Employees</h2>
+                </div>
+                <button type="button" id="loadEmployees" class="button-secondary">
+                    Refresh list
+                </button>
+            </div>
+
+            <form id="departmentFilterForm" class="filter-bar" role="search">
+                <label for="departmentFilter">Filter by department
+                    <input type="search" id="departmentFilter" name="department"
+                           maxlength="255" placeholder="e.g. Research">
+                </label>
+                <button type="submit" class="button-secondary">Filter</button>
+                <button type="button" id="clearDepartmentFilter" class="button-secondary">
+                    Show all
+                </button>
+            </form>
+
+            <p id="listMessage" class="status" role="status" aria-live="polite">
+                Loading employees…
+            </p>
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">ID</th>
+                            <th scope="col">First name</th>
+                            <th scope="col">Last name</th>
+                            <th scope="col">Email</th>
+                            <th scope="col">Department</th>
+                            <th scope="col"><span class="visually-hidden">Actions</span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="employeeTableBody"></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

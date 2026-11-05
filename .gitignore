@@ -36,3 +36,6 @@ build/
 *.bak
 *.log
 hs_err_pid*
+
+### Secrets for docker compose ###
+.env

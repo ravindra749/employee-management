@@ -12,6 +12,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -19,6 +20,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(SignedInAsAdmin.class)
 class DemoApplicationTests {
 
     @Autowired
@@ -27,9 +29,18 @@ class DemoApplicationTests {
     @Autowired
     private EmployeeRepository employeeRepository;
 
+    @Autowired
+    private DepartmentRepository departmentRepository;
+
+    private Long researchId;
+    private Long engineeringId;
+
     @BeforeEach
-    void clearEmployees() {
+    void resetData() {
         employeeRepository.deleteAll();
+        departmentRepository.deleteAll();
+        researchId = departmentRepository.save(new Department("Research")).getId();
+        engineeringId = departmentRepository.save(new Department("Engineering")).getId();
     }
 
     @Test
@@ -37,17 +48,18 @@ class DemoApplicationTests {
             throws Exception {
         mockMvc.perform(get("/api/employees"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isEmpty());
+                .andExpect(jsonPath("$.content").isEmpty());
 
         MvcResult createResult = mockMvc.perform(post("/api/employees")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"id":99,"firstName":"Ada","lastName":"Lovelace",
-                                 "email":"ada@example.com","department":"Research"}
-                                """))
+                                 "email":"ada@example.com","departmentId":%d}
+                                """.formatted(researchId)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").isNumber())
                 .andExpect(jsonPath("$.firstName").value("Ada"))
+                .andExpect(jsonPath("$.departmentName").value("Research"))
                 .andReturn();
         String createdJson = createResult.getResponse().getContentAsString();
         long id = Long.parseLong(
@@ -61,15 +73,16 @@ class DemoApplicationTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"firstName":"Ada","lastName":"Byron",
-                                 "email":"ada.byron@example.com","department":"Engineering"}
-                                """))
+                                 "email":"ada.byron@example.com","departmentId":%d}
+                                """.formatted(engineeringId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lastName").value("Byron"))
-                .andExpect(jsonPath("$.department").value("Engineering"));
+                .andExpect(jsonPath("$.departmentId").value(engineeringId))
+                .andExpect(jsonPath("$.departmentName").value("Engineering"));
 
         mockMvc.perform(get("/api/employees"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(id));
+                .andExpect(jsonPath("$.content[0].id").value(id));
 
         mockMvc.perform(delete("/api/employees/{id}", id))
                 .andExpect(status().isNoContent());
@@ -86,12 +99,13 @@ class DemoApplicationTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"firstName":"","lastName":"Lovelace",
-                                 "email":"not-an-email","department":"Research"}
+                                 "email":"not-an-email"}
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Validation failed"))
                 .andExpect(jsonPath("$.errors.firstName").exists())
-                .andExpect(jsonPath("$.errors.email").exists());
+                .andExpect(jsonPath("$.errors.email").exists())
+                .andExpect(jsonPath("$.errors.departmentId").exists());
     }
 
     @Test

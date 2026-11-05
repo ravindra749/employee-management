@@ -16,10 +16,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -31,6 +33,7 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(SignedInAsAdmin.class)
 class MySqlEmployeeIntegrationTests {
 
     @Container
@@ -56,9 +59,18 @@ class MySqlEmployeeIntegrationTests {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private DepartmentRepository departmentRepository;
+
+    private Long researchId;
+    private Long engineeringId;
+
     @BeforeEach
-    void clearEmployees() {
+    void resetData() {
         jdbcTemplate.update("DELETE FROM employee");
+        jdbcTemplate.update("DELETE FROM department");
+        researchId = departmentRepository.save(new Department("Research")).getId();
+        engineeringId = departmentRepository.save(new Department("Engineering")).getId();
     }
 
     @Test
@@ -69,41 +81,27 @@ class MySqlEmployeeIntegrationTests {
                         + "AND table_name = 'employee' ORDER BY ordinal_position",
                 String.class);
         assertEquals(
-                List.of("id", "first_name", "last_name", "email", "department"),
+                List.of("id", "first_name", "last_name", "email", "department_id"),
                 columns,
-                "Flyway should create the expected MySQL table columns.");
+                "Flyway should leave the expected MySQL table columns.");
 
-        Integer appliedMigrations = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM flyway_schema_history "
-                        + "WHERE version = '1' AND success = 1",
-                Integer.class);
-        assertEquals(1, appliedMigrations);
-
-        Integer emailConstraintMigrations = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM flyway_schema_history "
-                        + "WHERE version = '2' AND success = 1",
-                Integer.class);
-        assertEquals(1, emailConstraintMigrations,
-                "Flyway should apply the unique email constraint.");
+        for (String version : List.of("1", "2", "3")) {
+            assertEquals(1, jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM flyway_schema_history "
+                            + "WHERE version = ? AND success = 1",
+                    Integer.class, version),
+                    "Flyway should apply migration V" + version + ".");
+        }
 
         mockMvc.perform(post("/api/employees")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"firstName":"Grace","lastName":"Hopper",
-                                 "email":"grace.hopper@example.com","department":"Navy"}
-                                """))
+                                 "email":"grace.hopper@example.com","departmentId":%d}
+                                """.formatted(researchId)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").isNumber())
-                .andExpect(jsonPath("$.email").value("grace.hopper@example.com"));
-
-        assertEquals(1, jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM employee WHERE email = ?",
-                Integer.class,
-                "grace.hopper@example.com"));
-
-        mockMvc.perform(get("/api/employees"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].firstName").value("Grace"));
+                .andExpect(jsonPath("$.departmentName").value("Research"));
 
         Long id = jdbcTemplate.queryForObject(
                 "SELECT id FROM employee WHERE email = ?",
@@ -119,25 +117,21 @@ class MySqlEmployeeIntegrationTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"firstName":"Grace","lastName":"Murray",
-                                 "email":"grace.hopper@example.com","department":"Computing"}
-                                """))
+                                 "email":"grace.hopper@example.com","departmentId":%d}
+                                """.formatted(engineeringId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lastName").value("Murray"))
-                .andExpect(jsonPath("$.department").value("Computing"));
+                .andExpect(jsonPath("$.departmentName").value("Engineering"));
         assertEquals(1, jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM employee "
-                        + "WHERE id = ? AND last_name = ? AND department = ?",
+                        + "WHERE id = ? AND last_name = ? AND department_id = ?",
                 Integer.class,
                 id,
                 "Murray",
-                "Computing"));
+                engineeringId));
 
         mockMvc.perform(delete("/api/employees/{id}", id))
                 .andExpect(status().isNoContent());
-        assertEquals(0, jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM employee WHERE id = ?",
-                Integer.class,
-                id));
         mockMvc.perform(get("/api/employees/{id}", id))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value(
@@ -150,33 +144,48 @@ class MySqlEmployeeIntegrationTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"firstName":"Ada","lastName":"Lovelace",
-                                 "email":"ada@example.com","department":"Research"}
-                                """))
+                                 "email":"ada@example.com","departmentId":%d}
+                                """.formatted(researchId)))
                 .andExpect(status().isCreated());
         mockMvc.perform(post("/api/employees")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"firstName":"Linus","lastName":"Torvalds",
-                                 "email":"linus@example.com","department":"Engineering"}
-                                """))
+                                 "email":"linus@example.com","departmentId":%d}
+                                """.formatted(engineeringId)))
                 .andExpect(status().isCreated());
 
-        mockMvc.perform(get("/api/employees").param("department", " research "))
+        mockMvc.perform(get("/api/employees").param("departmentId", researchId.toString()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].firstName").value("Ada"));
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].firstName").value("Ada"));
 
         mockMvc.perform(post("/api/employees")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"firstName":"Augusta","lastName":"King",
-                                 "email":"ADA@EXAMPLE.COM","department":"Research"}
-                                """))
+                                 "email":"ADA@EXAMPLE.COM","departmentId":%d}
+                                """.formatted(researchId)))
                 .andExpect(status().isConflict());
 
         // The V2 constraint also rejects a duplicate written without the API.
         assertThrows(DataIntegrityViolationException.class, () -> jdbcTemplate.update(
-                "INSERT INTO employee (first_name, last_name, email, department) "
-                        + "VALUES ('Augusta', 'King', 'ada@example.com', 'Research')"));
+                "INSERT INTO employee (first_name, last_name, email, department_id) "
+                        + "VALUES ('Augusta', 'King', 'ada@example.com', ?)", researchId));
+
+        mockMvc.perform(delete("/api/departments/{id}", researchId))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void departmentMigrationKeepsExistingEmployeesOnRealMySql() {
+        // A second, empty database in the same container, created as root.
+        DriverManagerDataSource root = new DriverManagerDataSource(
+                mysql.getJdbcUrl(), "root", mysql.getPassword());
+        new JdbcTemplate(root).execute("CREATE DATABASE IF NOT EXISTS v3_migration_check");
+        String url = mysql.getJdbcUrl().replace(
+                "/employee_management_test", "/v3_migration_check");
+        DepartmentMigrationCheck.verify(
+                new DriverManagerDataSource(url, "root", mysql.getPassword()));
     }
 }

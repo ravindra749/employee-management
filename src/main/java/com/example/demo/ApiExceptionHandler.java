@@ -14,9 +14,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
-    @ExceptionHandler(EmployeeNotFoundException.class)
-    public ResponseEntity<Map<String, String>> handleEmployeeNotFound(
-            EmployeeNotFoundException exception) {
+    @ExceptionHandler({EmployeeNotFoundException.class, DepartmentNotFoundException.class})
+    public ResponseEntity<Map<String, String>> handleNotFound(RuntimeException exception) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(Map.of("message", exception.getMessage()));
     }
@@ -28,29 +27,63 @@ public class ApiExceptionHandler {
         exception.getBindingResult().getFieldErrors().forEach(error ->
                 fieldErrors.putIfAbsent(
                         error.getField(), error.getDefaultMessage()));
+        return ResponseEntity.badRequest()
+                .body(errorBody("Validation failed", fieldErrors));
+    }
 
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("message", "Validation failed");
-        response.put("errors", fieldErrors);
-        return ResponseEntity.badRequest().body(response);
+    @ExceptionHandler(UnknownDepartmentException.class)
+    public ResponseEntity<Map<String, Object>> handleUnknownDepartment(
+            UnknownDepartmentException exception) {
+        return ResponseEntity.badRequest().body(errorBody(
+                "Validation failed",
+                Map.of("departmentId", "does not match an existing department")));
+    }
+
+    @ExceptionHandler(InvalidParameterException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidParameter(
+            InvalidParameterException exception) {
+        return ResponseEntity.badRequest().body(errorBody(
+                "Invalid query parameter",
+                Map.of(exception.getParameter(), exception.getMessage())));
     }
 
     @ExceptionHandler(DuplicateEmailException.class)
     public ResponseEntity<Map<String, Object>> handleDuplicateEmail(
             DuplicateEmailException exception) {
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("message", exception.getMessage());
-        response.put("errors", Map.of("email", "is already used by another employee"));
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(errorBody(
+                exception.getMessage(),
+                Map.of("email", "is already used by another employee")));
     }
 
-    // The unique constraint still guards simultaneous requests that both
-    // pass the service check.
+    @ExceptionHandler(DuplicateDepartmentException.class)
+    public ResponseEntity<Map<String, Object>> handleDuplicateDepartment(
+            DuplicateDepartmentException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(errorBody(
+                exception.getMessage(),
+                Map.of("name", "is already used by another department")));
+    }
+
+    @ExceptionHandler(DepartmentInUseException.class)
+    public ResponseEntity<Map<String, String>> handleDepartmentInUse(
+            DepartmentInUseException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of("message", exception.getMessage()));
+    }
+
+    // The unique constraints still guard simultaneous requests that both
+    // pass the service checks.
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<Map<String, String>> handleDataConflict(
             DataIntegrityViolationException exception) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
                 "message",
-                "The employee conflicts with existing data, such as an email that is already in use."));
+                "The request conflicts with existing data, such as an email or department name that is already in use."));
+    }
+
+    private static Map<String, Object> errorBody(String message, Map<String, String> errors) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("message", message);
+        body.put("errors", errors);
+        return body;
     }
 }

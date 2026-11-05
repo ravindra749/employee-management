@@ -14,9 +14,13 @@
             <p class="eyebrow">PEOPLE OPERATIONS</p>
             <h1>Employee management</h1>
             <p class="intro">Keep employee details up to date in one place.</p>
+            <div class="session-bar">
+                <p id="currentUser" class="status"></p>
+                <button type="button" id="signOut" class="button-secondary">Sign out</button>
+            </div>
         </header>
 
-        <section class="panel" aria-labelledby="formHeading">
+        <section class="panel admin-only" aria-labelledby="formHeading">
             <div class="section-heading">
                 <div>
                     <p class="eyebrow">EMPLOYEE DETAILS</p>
@@ -38,9 +42,10 @@
                         <input type="email" id="email" name="email"
                                autocomplete="email" maxlength="255" required>
                     </label>
-                    <label for="department">Department
-                        <input type="text" id="department" name="department"
-                               maxlength="255" required>
+                    <label for="departmentId">Department
+                        <select id="departmentId" name="departmentId" required>
+                            <option value="">Choose a department</option>
+                        </select>
                     </label>
                 </div>
                 <div class="form-actions">
@@ -66,10 +71,10 @@
 
             <form id="departmentFilterForm" class="filter-bar" role="search">
                 <label for="departmentFilter">Filter by department
-                    <input type="search" id="departmentFilter" name="department"
-                           maxlength="255" placeholder="e.g. Research">
+                    <select id="departmentFilter" name="departmentId">
+                        <option value="">All departments</option>
+                    </select>
                 </label>
-                <button type="submit" class="button-secondary">Filter</button>
                 <button type="button" id="clearDepartmentFilter" class="button-secondary">
                     Show all
                 </button>
@@ -82,17 +87,48 @@
                 <table>
                     <thead>
                         <tr>
-                            <th scope="col">ID</th>
-                            <th scope="col">First name</th>
-                            <th scope="col">Last name</th>
-                            <th scope="col">Email</th>
-                            <th scope="col">Department</th>
+                            <th scope="col"><button type="button" class="sort-button" data-sort="id">ID</button></th>
+                            <th scope="col"><button type="button" class="sort-button" data-sort="firstName">First name</button></th>
+                            <th scope="col"><button type="button" class="sort-button" data-sort="lastName">Last name</button></th>
+                            <th scope="col"><button type="button" class="sort-button" data-sort="email">Email</button></th>
+                            <th scope="col"><button type="button" class="sort-button" data-sort="departmentName">Department</button></th>
                             <th scope="col"><span class="visually-hidden">Actions</span></th>
                         </tr>
                     </thead>
                     <tbody id="employeeTableBody"></tbody>
                 </table>
             </div>
+            <nav class="pager" aria-label="Employee pages">
+                <button type="button" id="previousPage" class="button-secondary">Previous</button>
+                <p id="pageInfo" class="status">Page 1 of 1</p>
+                <button type="button" id="nextPage" class="button-secondary">Next</button>
+                <label for="pageSize">Rows per page
+                    <select id="pageSize">
+                        <option value="10">10</option>
+                        <option value="20" selected>20</option>
+                        <option value="50">50</option>
+                    </select>
+                </label>
+            </nav>
+        </section>
+
+        <section class="panel" aria-labelledby="departmentHeading">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">ORGANISATION</p>
+                    <h2 id="departmentHeading">Departments</h2>
+                </div>
+            </div>
+
+            <form id="departmentForm" class="filter-bar admin-only">
+                <label for="departmentName">New department
+                    <input type="text" id="departmentName" name="name"
+                           maxlength="255" required placeholder="e.g. Research">
+                </label>
+                <button type="submit" id="addDepartment">Add department</button>
+            </form>
+            <p id="departmentMessage" class="status" role="status" aria-live="polite"></p>
+            <ul id="departmentList" class="department-list"></ul>
         </section>
     </main>
 </body>

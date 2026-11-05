@@ -1,7 +1,6 @@
 package com.example.demo;
 
-import java.util.List;
-
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -15,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "Employees", description = "Create, list, update and delete employees")
 @RestController
 @RequestMapping("/api/employees")
 public class EmployeeController {
@@ -26,27 +26,32 @@ public class EmployeeController {
     }
 
     @GetMapping
-    public List<Employee> getAllEmployees(@RequestParam(required = false, defaultValue = "") String department) {
-        return employeeService.findByDepartment(department);
+    public PageResponse<EmployeeResponse> getEmployees(
+            @RequestParam(required = false) Long departmentId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "lastName") String sort,
+            @RequestParam(defaultValue = "asc") String direction) {
+        return employeeService.findPage(departmentId, page, size, sort, direction);
     }
 
     @GetMapping("/{id}")
-    public Employee getEmployeeById(@PathVariable Long id) {
+    public EmployeeResponse getEmployeeById(@PathVariable Long id) {
         return employeeService.findById(id);
     }
 
     @PostMapping
-    public ResponseEntity<Employee> addEmployee(
-            @Valid @RequestBody Employee employee) {
-        Employee saved = employeeService.create(employee);
-        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+    public ResponseEntity<EmployeeResponse> addEmployee(
+            @Valid @RequestBody EmployeeRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(employeeService.create(request));
     }
 
     @PutMapping("/{id}")
-    public Employee updateEmployee(
+    public EmployeeResponse updateEmployee(
             @PathVariable Long id,
-            @Valid @RequestBody Employee updatedEmployee) {
-        return employeeService.update(id, updatedEmployee);
+            @Valid @RequestBody EmployeeRequest request) {
+        return employeeService.update(id, request);
     }
 
     @DeleteMapping("/{id}")

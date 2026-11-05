@@ -1,0 +1,43 @@
+# Runs the whole stack: MySQL 8.4 and the app.
+#   1. copy .env.example to .env and fill it in
+#   2. docker compose up --build
+#   3. open http://localhost:8080 and sign in with the admin account
+# Data is kept in the mysql-data volume; "docker compose down -v" deletes it.
+name: employee-management
+
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: employee_management
+      MYSQL_USER: ${DB_USERNAME:?Set DB_USERNAME in .env}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      # Succeeds once MySQL accepts connections; needs no password.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:mysql://db:3306/employee_management
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      APP_ADMIN_USERNAME: ${APP_ADMIN_USERNAME:?Set APP_ADMIN_USERNAME in .env}
+      APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:?Set APP_ADMIN_PASSWORD in .env}
+      APP_VIEWER_USERNAME: ${APP_VIEWER_USERNAME:-}
+      APP_VIEWER_PASSWORD: ${APP_VIEWER_PASSWORD:-}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    restart: unless-stopped
+
+volumes:
+  mysql-data:

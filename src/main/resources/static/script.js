@@ -8,17 +8,34 @@ const listMessage = document.getElementById("listMessage");
 const submitButton = document.getElementById("submitEmployee");
 const cancelEditButton = document.getElementById("cancelEdit");
 const loadEmployeesButton = document.getElementById("loadEmployees");
-const departmentFilterForm = document.getElementById("departmentFilterForm");
+const departmentSelect = document.getElementById("departmentId");
 const departmentFilter = document.getElementById("departmentFilter");
 const clearDepartmentFilterButton = document.getElementById("clearDepartmentFilter");
+const departmentForm = document.getElementById("departmentForm");
+const departmentNameInput = document.getElementById("departmentName");
+const departmentMessage = document.getElementById("departmentMessage");
+const departmentList = document.getElementById("departmentList");
+const previousPageButton = document.getElementById("previousPage");
+const nextPageButton = document.getElementById("nextPage");
+const pageInfo = document.getElementById("pageInfo");
+const pageSizeSelect = document.getElementById("pageSize");
+const sortButtons = document.querySelectorAll("button[data-sort]");
 let employees = [];
+let departments = [];
+let currentPage = 0;
+let totalPages = 0;
+let sortField = "lastName";
+let sortDirection = "asc";
+let currentUser = null;
+const currentUserLabel = document.getElementById("currentUser");
+const signOutButton = document.getElementById("signOut");
 
 function readEmployeeForm() {
     return {
         firstName: document.getElementById("firstName").value.trim(),
         lastName: document.getElementById("lastName").value.trim(),
         email: document.getElementById("email").value.trim(),
-        department: document.getElementById("department").value.trim()
+        departmentId: departmentSelect.value ? Number(departmentSelect.value) : null
     };
 }
 
@@ -30,6 +47,44 @@ async function readError(response) {
     } catch {
         return `Request failed (${response.status}).`;
     }
+}
+
+// Spring Security puts the CSRF token in the XSRF-TOKEN cookie; changes must
+// send it back in the X-XSRF-TOKEN header.
+function csrfHeader() {
+    const match = document.cookie.match(/(?:^|; )XSRF-TOKEN=([^;]*)/);
+    return match ? { "X-XSRF-TOKEN": decodeURIComponent(match[1]) } : {};
+}
+
+// Every API call goes through here: it adds the CSRF token to changes and
+// sends the browser to the login page when the session has ended.
+async function apiFetch(url, options = {}) {
+    const method = (options.method ?? "GET").toUpperCase();
+    const headers = { ...(options.headers ?? {}) };
+    if (method !== "GET") {
+        Object.assign(headers, csrfHeader());
+    }
+    const response = await fetch(url, { ...options, headers });
+    if (response.status === 401) {
+        window.location.assign("/login");
+        throw new Error("Your session has ended. Please sign in again.");
+    }
+    if (response.status === 403) {
+        throw new Error("You do not have permission to do that.");
+    }
+    return response;
+}
+
+async function loadCurrentUser() {
+    const response = await apiFetch("/api/me");
+    if (!response.ok) {
+        throw new Error(await readError(response));
+    }
+    currentUser = await response.json();
+    const isAdmin = currentUser.role === "ADMIN";
+    document.body.classList.toggle("read-only", !isAdmin);
+    currentUserLabel.textContent =
+        `Signed in as ${currentUser.username} (${isAdmin ? "Admin" : "Viewer, read only"})`;
 }
 
 function resetEmployeeForm() {
@@ -47,6 +102,65 @@ function addCell(row, value) {
     return cell;
 }
 
+function addOption(select, value, label) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    select.appendChild(option);
+}
+
+// Refill both department dropdowns, keeping what was selected.
+function renderDepartmentOptions() {
+    for (const [select, emptyLabel] of [
+        [departmentSelect, "Choose a department"],
+        [departmentFilter, "All departments"]
+    ]) {
+        const selected = select.value;
+        select.replaceChildren();
+        addOption(select, "", emptyLabel);
+        for (const department of departments) {
+            addOption(select, department.id, department.name);
+        }
+        select.value = departments.some((d) => String(d.id) === selected) ? selected : "";
+    }
+}
+
+function renderDepartmentList() {
+    departmentList.replaceChildren();
+    for (const department of departments) {
+        const item = document.createElement("li");
+        const name = document.createElement("span");
+        name.textContent = department.name;
+
+        const deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.className = "text-button danger-button admin-only";
+        deleteButton.dataset.departmentId = department.id;
+        deleteButton.textContent = "Delete";
+        deleteButton.setAttribute("aria-label", `Delete the ${department.name} department`);
+
+        item.append(name, deleteButton);
+        departmentList.appendChild(item);
+    }
+}
+
+async function loadDepartments() {
+    try {
+        const response = await apiFetch("/api/departments");
+        if (!response.ok) {
+            throw new Error(await readError(response));
+        }
+        departments = await response.json();
+        renderDepartmentOptions();
+        renderDepartmentList();
+        if (departments.length === 0) {
+            departmentMessage.textContent = "Add a department before adding employees.";
+        }
+    } catch (error) {
+        departmentMessage.textContent = `Could not load departments: ${error.message}`;
+    }
+}
+
 function renderEmployees() {
     employeeTableBody.replaceChildren();
 
@@ -56,10 +170,10 @@ function renderEmployees() {
         addCell(row, employee.firstName);
         addCell(row, employee.lastName);
         addCell(row, employee.email);
-        addCell(row, employee.department);
+        addCell(row, employee.departmentName);
 
         const actions = document.createElement("td");
-        actions.className = "row-actions";
+        actions.className = "row-actions admin-only";
 
         const editButton = document.createElement("button");
         editButton.type = "button";
@@ -83,38 +197,78 @@ function renderEmployees() {
     }
 }
 
+function renderPager() {
+    pageInfo.textContent = `Page ${totalPages === 0 ? 0 : currentPage + 1} of ${totalPages}`;
+    previousPageButton.disabled = currentPage === 0;
+    nextPageButton.disabled = currentPage + 1 >= totalPages;
+}
+
+function renderSortHeaders() {
+    for (const button of sortButtons) {
+        const active = button.dataset.sort === sortField;
+        button.closest("th").setAttribute(
+            "aria-sort",
+            active ? (sortDirection === "asc" ? "ascending" : "descending") : "none"
+        );
+    }
+}
+
 async function loadEmployees() {
     loadEmployeesButton.disabled = true;
     listMessage.textContent = "Loading employees…";
 
     try {
         // An empty filter lists everyone, so Refresh and the first load still work.
-        const department = departmentFilter.value.trim();
-        const url = department
-            ? `/api/employees?department=${encodeURIComponent(department)}`
-            : "/api/employees";
-        const response = await fetch(url);
+        const departmentId = departmentFilter.value;
+        const departmentName = departmentFilter.selectedOptions[0]?.textContent ?? "";
+        const params = new URLSearchParams({
+            page: currentPage,
+            size: pageSizeSelect.value,
+            sort: sortField,
+            direction: sortDirection
+        });
+        if (departmentId) {
+            params.set("departmentId", departmentId);
+        }
+        const response = await apiFetch(`/api/employees?${params}`);
         if (!response.ok) {
             throw new Error(await readError(response));
         }
 
-        employees = await response.json();
+        const page = await response.json();
+        totalPages = page.totalPages;
+        // After a delete the last page can disappear; step back to the new last page.
+        if (currentPage > 0 && currentPage >= totalPages) {
+            currentPage = Math.max(totalPages - 1, 0);
+            await loadEmployees();
+            return;
+        }
+        employees = page.content;
         renderEmployees();
-        if (employees.length === 0) {
-            listMessage.textContent = department
-                ? `No employees found in the "${department}" department.`
+        renderPager();
+        renderSortHeaders();
+        if (page.totalElements === 0) {
+            listMessage.textContent = departmentId
+                ? `No employees found in the "${departmentName}" department.`
                 : "No employees found. Add an employee to get started.";
         } else {
-            const count = `${employees.length} employee${employees.length === 1 ? "" : "s"}`;
-            listMessage.textContent = department
-                ? `Showing ${count} in the "${department}" department.`
-                : `Showing ${count}.`;
+            const first = page.page * page.size + 1;
+            const last = first + employees.length - 1;
+            const range = `${first}–${last} of ${page.totalElements}`;
+            listMessage.textContent = departmentId
+                ? `Showing ${range} in the "${departmentName}" department.`
+                : `Showing ${range} employees.`;
         }
     } catch (error) {
         listMessage.textContent = `Could not load employees: ${error.message}`;
     } finally {
         loadEmployeesButton.disabled = false;
     }
+}
+
+function reloadFromFirstPage() {
+    currentPage = 0;
+    loadEmployees();
 }
 
 employeeForm.addEventListener("submit", async (event) => {
@@ -126,7 +280,7 @@ employeeForm.addEventListener("submit", async (event) => {
     const isEditing = Boolean(employeeId);
 
     try {
-        const response = await fetch(
+        const response = await apiFetch(
             isEditing ? `/api/employees/${encodeURIComponent(employeeId)}` : "/api/employees",
             {
                 method: isEditing ? "PUT" : "POST",
@@ -174,7 +328,7 @@ employeeTableBody.addEventListener("click", async (event) => {
         document.getElementById("firstName").value = employee.firstName;
         document.getElementById("lastName").value = employee.lastName;
         document.getElementById("email").value = employee.email;
-        document.getElementById("department").value = employee.department;
+        departmentSelect.value = String(employee.departmentId);
         employeeForm.dataset.employeeId = employee.id;
         formHeading.textContent = `Edit ${employee.firstName} ${employee.lastName}`;
         submitButton.textContent = "Save changes";
@@ -192,7 +346,7 @@ employeeTableBody.addEventListener("click", async (event) => {
     button.disabled = true;
     listMessage.textContent = `Deleting ${fullName}…`;
     try {
-        const response = await fetch(
+        const response = await apiFetch(
             `/api/employees/${encodeURIComponent(employee.id)}`,
             { method: "DELETE" }
         );
@@ -211,15 +365,105 @@ employeeTableBody.addEventListener("click", async (event) => {
     }
 });
 
+departmentFilter.addEventListener("change", reloadFromFirstPage);
+
 departmentFilterForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    loadEmployees();
+    reloadFromFirstPage();
 });
 
 clearDepartmentFilterButton.addEventListener("click", () => {
     departmentFilter.value = "";
-    loadEmployees();
+    reloadFromFirstPage();
+});
+
+// Clicking a column heading sorts by it; clicking it again reverses the order.
+for (const button of sortButtons) {
+    button.addEventListener("click", () => {
+        if (sortField === button.dataset.sort) {
+            sortDirection = sortDirection === "asc" ? "desc" : "asc";
+        } else {
+            sortField = button.dataset.sort;
+            sortDirection = "asc";
+        }
+        reloadFromFirstPage();
+    });
+}
+
+previousPageButton.addEventListener("click", () => {
+    if (currentPage > 0) {
+        currentPage -= 1;
+        loadEmployees();
+    }
+});
+
+nextPageButton.addEventListener("click", () => {
+    if (currentPage + 1 < totalPages) {
+        currentPage += 1;
+        loadEmployees();
+    }
+});
+
+pageSizeSelect.addEventListener("change", reloadFromFirstPage);
+
+departmentForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const name = departmentNameInput.value.trim();
+    departmentMessage.textContent = "Adding department…";
+    try {
+        const response = await apiFetch("/api/departments", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name })
+        });
+        if (!response.ok) {
+            throw new Error(await readError(response));
+        }
+        const saved = await response.json();
+        departmentForm.reset();
+        departmentMessage.textContent = `Added the ${saved.name} department.`;
+        await loadDepartments();
+    } catch (error) {
+        departmentMessage.textContent = `Could not add department: ${error.message}`;
+    }
+});
+
+departmentList.addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-department-id]");
+    if (!button) {
+        return;
+    }
+    const department = departments.find(
+        (item) => String(item.id) === button.dataset.departmentId
+    );
+    if (!department || !window.confirm(`Delete the ${department.name} department?`)) {
+        return;
+    }
+    try {
+        const response = await apiFetch(
+            `/api/departments/${encodeURIComponent(department.id)}`,
+            { method: "DELETE" }
+        );
+        if (!response.ok) {
+            throw new Error(await readError(response));
+        }
+        departmentMessage.textContent = `Deleted the ${department.name} department.`;
+        await loadDepartments();
+        await loadEmployees();
+    } catch (error) {
+        departmentMessage.textContent = `Could not delete department: ${error.message}`;
+    }
+});
+
+signOutButton.addEventListener("click", async () => {
+    await fetch("/logout", { method: "POST", headers: csrfHeader() });
+    window.location.assign("/login?logout");
 });
 
 loadEmployeesButton.addEventListener("click", loadEmployees);
-loadEmployees();
+loadCurrentUser()
+    .then(loadDepartments)
+    .then(loadEmployees)
+    .catch((error) => {
+        listMessage.textContent = `Could not start: ${error.message}`;
+    });

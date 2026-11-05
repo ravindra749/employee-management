@@ -16,7 +16,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
     font: inherit;
 }
 
@@ -91,7 +92,8 @@ label {
     font-weight: 600;
 }
 
-input {
+input,
+select {
     width: 100%;
     min-height: 44px;
     padding: 10px 12px;
@@ -102,6 +104,7 @@ input {
 }
 
 input:focus-visible,
+select:focus-visible,
 button:focus-visible {
     outline: 3px solid #8ab8ff;
     outline-offset: 2px;
@@ -248,4 +251,78 @@ td {
 
 .filter-bar label {
     flex: 1 1 220px;
+}
+
+.sort-button {
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    color: inherit;
+    background: none;
+    font-weight: inherit;
+    cursor: pointer;
+}
+
+.sort-button:hover:not(:disabled) {
+    background: none;
+    text-decoration: underline;
+}
+
+th[aria-sort="ascending"] .sort-button::after {
+    content: " \25B2";
+}
+
+th[aria-sort="descending"] .sort-button::after {
+    content: " \25BC";
+}
+
+.pager {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    margin-top: 16px;
+}
+
+.pager label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.pager select {
+    width: auto;
+}
+
+.session-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    margin-top: 16px;
+}
+
+/* Viewers can read everything but do not see editing controls. */
+.read-only .admin-only {
+    display: none;
+}
+
+.department-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 16px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.department-list li {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px 4px 12px;
+    border: 1px solid #c8d3e1;
+    border-radius: 999px;
+    background: #fff;
 }

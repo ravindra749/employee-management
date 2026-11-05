@@ -1,43 +1,40 @@
-
 package com.example.demo;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 
+// The database row. Input rules live on EmployeeRequest; the API never
+// sends or receives this class directly.
 @Entity
 public class Employee {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @NotBlank
-    @Size(max = 255)
+    @Column(nullable = false)
     private String firstName;
 
-    @NotBlank
-    @Size(max = 255)
+    @Column(nullable = false)
     private String lastName;
 
-    @NotBlank
-    @Email
-    @Size(max = 255)
+    @Column(nullable = false, unique = true)
     private String email;
 
-    @NotBlank
-    @Size(max = 255)
-    private String department;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "department_id", nullable = false)
+    private Department department;
 
     public Employee() {
     }
 
-    public Employee(Long id, String firstName, String lastName,
-                    String email, String department) {
-        this.id = id;
+    public Employee(String firstName, String lastName, String email,
+                    Department department) {
         this.firstName = firstName;
         this.lastName = lastName;
         this.email = email;
@@ -46,10 +43,6 @@ public class Employee {
 
     public Long getId() {
         return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
     }
 
     public String getFirstName() {
@@ -76,11 +69,11 @@ public class Employee {
         this.email = email;
     }
 
-    public String getDepartment() {
+    public Department getDepartment() {
         return department;
     }
 
-    public void setDepartment(String department) {
+    public void setDepartment(Department department) {
         this.department = department;
     }
 }
